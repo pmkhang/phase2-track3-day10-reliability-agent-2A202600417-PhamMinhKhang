@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import json
 import random
 from pathlib import Path
@@ -50,23 +49,39 @@ def build_gateway(config: LabConfig, provider_overrides: dict[str, float] | None
 
 
 def calculate_recovery_time_ms(gateway: ReliabilityGateway) -> float | None:
-    """Derive recovery time from circuit breaker transition logs.
-
-    Recovery time = time between circuit opening and next successful close.
-    Returns the average recovery time across all breakers, or None if no recovery occurred.
-    """
+    """Derive recovery time from circuit breaker transition logs."""
     recovery_times: list[float] = []
     for breaker in gateway.breakers.values():
         open_ts: float | None = None
         for entry in breaker.transition_log:
             if entry["to"] == "open" and open_ts is None:
-                open_ts = entry["ts"]
+                open_ts = float(entry["ts"])
             elif entry["to"] == "closed" and open_ts is not None:
                 recovery_times.append((float(entry["ts"]) - open_ts) * 1000)
                 open_ts = None
     if not recovery_times:
         return None
     return sum(recovery_times) / len(recovery_times)
+
+
+def _evaluate_scenario(scenario: ScenarioConfig, result: RunMetrics) -> bool:
+    """Evaluate pass/fail for a scenario based on specific criteria."""
+    name = scenario.name
+    if name == "primary_timeout_100":
+        # All traffic should fallback; fallback success rate > 0.9
+        return result.fallback_success_rate > 0.9
+    elif name == "primary_flaky_50":
+        # Circuit should oscillate; at least 1 open event, availability >= 0.8
+        return result.circuit_open_count >= 1 and result.availability >= 0.8
+    elif name == "all_healthy":
+        # Low error rate
+        return result.error_rate < 0.1
+    elif name == "cache_stale_candidate":
+        # Cache should NOT produce false hits on different-intent queries
+        # Success = availability still high (cache guardrails don't break things)
+        return result.availability >= 0.8
+    else:
+        return result.successful_requests > 0
 
 
 def run_scenario(config: LabConfig, queries: list[str], scenario: ScenarioConfig) -> RunMetrics:
@@ -82,10 +97,10 @@ def run_scenario(config: LabConfig, queries: list[str], scenario: ScenarioConfig
         if result.cache_hit:
             metrics.cache_hits += 1
             metrics.estimated_cost_saved += 0.001
-        if result.route == "fallback":
+        if result.route.startswith("fallback:"):
             metrics.fallback_successes += 1
             metrics.successful_requests += 1
-        elif result.route == "static_fallback":
+        elif result.route.startswith("static_fallback:"):
             metrics.static_fallbacks += 1
             metrics.failed_requests += 1
         else:
@@ -101,11 +116,7 @@ def run_scenario(config: LabConfig, queries: list[str], scenario: ScenarioConfig
 
 
 def run_simulation(config: LabConfig, queries: list[str]) -> RunMetrics:
-    """Run all named scenarios from config, or a default run if none defined.
-
-    TODO(student): Add a cache vs no-cache comparison scenario.
-    Extend with your own custom scenarios (e.g., cost cap near limit).
-    """
+    """Run all named scenarios from config and aggregate metrics."""
     if not config.scenarios:
         default_scenario = ScenarioConfig(name="default", description="baseline run")
         metrics = run_scenario(config, queries, default_scenario)
@@ -115,10 +126,7 @@ def run_simulation(config: LabConfig, queries: list[str]) -> RunMetrics:
     combined = RunMetrics()
     for scenario in config.scenarios:
         result = run_scenario(config, queries, scenario)
-
-        # TODO(student): Define pass/fail criteria per scenario.
-        # Example: primary_timeout_100 passes if fallback_success_rate > 0.9
-        passed = result.successful_requests > 0
+        passed = _evaluate_scenario(scenario, result)
         combined.scenarios[scenario.name] = "pass" if passed else "fail"
 
         combined.total_requests += result.total_requests

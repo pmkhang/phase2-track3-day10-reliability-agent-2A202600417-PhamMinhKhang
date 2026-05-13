@@ -1,0 +1,5 @@
+final_state= closed
+transitions=
+{'from': 'closed', 'to': 'open', 'reason': 'failure_threshold', 'ts': 1778643387.073587}
+{'from': 'open', 'to': 'half_open', 'reason': 'reset_timeout_elapsed', 'ts': 1778643387.1245055}
+{'from': 'half_open', 'to': 'closed', 'reason': 'probe_success', 'ts': 1778643387.124518}

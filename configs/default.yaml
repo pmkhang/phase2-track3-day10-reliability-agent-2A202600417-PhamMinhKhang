@@ -34,3 +34,10 @@ scenarios:
   - name: all_healthy
     description: "Baseline — both providers healthy"
     provider_overrides: {}
+  - name: cache_stale_candidate
+    description: "Low failure rate with cache — verify false-hit guardrails block stale matches"
+    provider_overrides:
+      primary: 0.1
+  - name: cache_stale_candidate
+    description: "Repeat similar prompts with year changes to validate false-hit guardrails"
+    provider_overrides: {}

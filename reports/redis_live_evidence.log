@@ -1,0 +1,9 @@
+shared_state_value= shared response
+shared_state_score= 1.0
+redis_keys= ['rl:live:11956e8badb2']
+latency_memory_p50= 0.29
+latency_redis_p50= 0.87
+latency_memory_p95= 488.07
+latency_redis_p95= 474.91
+latency_memory_p99= 528.75
+latency_redis_p99= 514.68
